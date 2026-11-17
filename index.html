@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RFID Mess Management</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f9;font:15px Arial;color:#172033}
+header{background:#173b70;color:white;padding:18px}header h2{margin:0 0 6px}
+main{padding:14px;max-width:760px;margin:auto}.card{background:white;border-radius:12px;padding:15px;margin:12px 0;box-shadow:0 2px 8px #0001}
+input,select,button{width:100%;padding:12px;margin:6px 0;border:1px solid #ccd3df;border-radius:8px;font-size:15px}
+button{background:#1767c2;color:white;border:0;font-weight:bold}.secondary{background:#e8eef8;color:#173b70}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tabs{display:flex;gap:6px;flex-wrap:wrap}.tabs button{width:auto;flex:1}
+small,.muted{color:#667085}.hidden{display:none}.stat{font-size:25px;font-weight:bold;color:#1767c2}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:8px;border-bottom:1px solid #e6e9ef}
+</style></head><body>
+<header><h2>RFID Mess Management</h2><div>Arduino UNO • RC522 • ESP8266</div></header>
+<main>
+<div id="login" class="card"><h3>Admin Login</h3><input id="pin" type="password" placeholder="Admin PIN" value=""><button onclick="login()">Login</button><small>Default PIN: 1234 (change it before use)</small></div>
+<div id="app" class="hidden">
+<div class="card"><div class="row"><div><small>Connection</small><div id="status">Not connected</div></div><div><small>Server</small><div>192.168.4.1</div></div></div><button onclick="connect()">Connect to ESP8266</button></div>
+<div class="tabs"><button onclick="show('students')">Students</button><button onclick="show('scan')">Meal</button><button onclick="show('reports')">Reports</button><button class="secondary" onclick="logout()">Logout</button></div>
+<section id="students" class="card"><h3>Register Student</h3><input id="sname" placeholder="Student name"><input id="roll" placeholder="Roll number"><input id="uid" placeholder="RFID UID (scan card; see ESP serial monitor)"><button onclick="addStudent()">Save Student</button><h3>Registered Students</h3><button class="secondary" onclick="loadStudents()">Refresh students</button><div id="studentList"></div></section>
+<section id="scan" class="card hidden"><h3>Meal Counter</h3><select id="meal"><option>Breakfast</option><option>Lunch</option><option>Dinner</option></select><p class="muted">Tap a registered RFID card on the reader. ESP8266 sends scan automatically.</p><button onclick="lastScan()">Check last scan</button><div id="scanResult"></div></section>
+<section id="reports" class="card hidden"><h3>Reports</h3><label>Daily date</label><input id="rdate" type="date"><button onclick="daily()">Daily report</button><label>Monthly report (YYYY-MM)</label><input id="rmonth" type="month"><button onclick="monthly()">Monthly report</button><div id="report"></div></section>
+</div></main>
+<script>
+const API='http://192.168.4.1';
+const PIN_KEY='rfid_admin_pin';
+function login(){let p=document.getElementById('pin').value;let saved=localStorage.getItem(PIN_KEY)||'1234';if(p===saved){document.getElementById('login').classList.add('hidden');document.getElementById('app').classList.remove('hidden');connect()}else alert('Incorrect PIN')}
+function logout(){document.getElementById('app').classList.add('hidden');document.getElementById('login').classList.remove('hidden')}
+function show(id){['students','scan','reports'].forEach(x=>document.getElementById(x).classList.toggle('hidden',x!==id))}
+async function req(path,opt={}){let r=await fetch(API+path,{...opt,headers:{'Content-Type':'application/json',...(opt.headers||{})}});if(!r.ok)throw Error('HTTP '+r.status);return r.json()}
+async function connect(){try{let x=await req('/api/health');document.getElementById('status').textContent='Connected: '+JSON.stringify(x);loadStudents()}catch(e){document.getElementById('status').textContent='Not connected. Join RFID_MESS Wi-Fi first.'}}
+async function addStudent(){try{let v={name:sname.value.trim(),roll:roll.value.trim(),uid:uid.value.trim().replace(/\\s/g,'').toUpperCase()};if(!v.name||!v.roll||!v.uid)return alert('Fill all fields');await req('/api/students',{method:'POST',body:JSON.stringify(v)});alert('Student saved');sname.value=roll.value=uid.value='';loadStudents()}catch(e){alert('Save failed: '+e.message)}}
+async function loadStudents(){try{let a=await req('/api/students');let arr=Array.isArray(a)?a:(a.students||[]);studentList.innerHTML='<table><tr><th>Name</th><th>Roll</th><th>UID</th></tr>'+arr.map(s=>`<tr><td>${esc(s.name)}</td><td>${esc(s.roll)}</td><td>${esc(s.uid)}</td></tr>`).join('')+'</table>'}catch(e){studentList.textContent='Could not load students.'}}
+async function lastScan(){try{let x=await req('/api/last-scan');scanResult.textContent=JSON.stringify(x)}catch(e){scanResult.textContent='No scan data / server unavailable'}}
+async function daily(){try{let x=await req('/api/report?date='+rdate.value);report.innerHTML='<pre>'+esc(JSON.stringify(x,null,2))+'</pre>'}catch(e){report.textContent='Report unavailable'}}
+async function monthly(){try{let x=await req('/api/report?month='+rmonth.value);report.innerHTML='<pre>'+esc(JSON.stringify(x,null,2))+'</pre>'}catch(e){report.textContent='Report unavailable'}}
+function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+rdate.value=new Date().toISOString().slice(0,10);rmonth.value=new Date().toISOString().slice(0,7);
+</script></body></html>
